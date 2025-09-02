@@ -24,7 +24,7 @@ if not os.path.exists("ml-latest-small"):
         zip_ref.extractall(".")
 
 movies = pd.read_csv("ml-latest-small/movies.csv")
-ratings = pd.read_csv("ml-latest-small/ratings.csv")")
+ratings = pd.read_csv("ml-latest-small/ratings.csv")
 
 # ---- Content-based filtering ----
 tfidf = TfidfVectorizer(stop_words="english")
