@@ -10,12 +10,13 @@ Original file is located at
 import streamlit as st
 import pandas as pd
 import numpy as np
+import requests, os, zipfile
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.decomposition import NMF
-import os, zipfile, requests
 
-# Auto-download MovieLens dataset
+# ------------------------------
+# Download MovieLens dataset
 # ------------------------------
 url = "http://files.grouplens.org/datasets/movielens/ml-latest-small.zip"
 if not os.path.exists("ml-latest-small"):
@@ -57,7 +58,7 @@ def recommend_collaborative(user_id, n=5):
     scores = pred_df.loc[user_id]
     top_movies = scores.sort_values(ascending=False).head(n).index
     return movies[movies["movieId"].isin(top_movies)]["title"].tolist()
-    
+
 # ---- Hybrid recommender ----
 def recommend_hybrid(user_id, title, n=5, alpha=0.5):
     if title not in indices or user_id not in pred_df.index:
@@ -74,25 +75,32 @@ def recommend_hybrid(user_id, title, n=5, alpha=0.5):
 
     return movies.iloc[[cb_candidates[i] for i in ranked]]["title"].tolist()
 
-# ---- Streamlit UI ----
+# ------------------------------
+# Streamlit UI
+# ------------------------------
 st.title("🎬 Movie Recommendation System")
 
 st.sidebar.header("User Settings")
-user_id = st.sidebar.number_input("Enter User ID", min_value=1, max_value=ratings["userId"].max(), value=1)
+user_id = st.sidebar.number_input("Enter User ID", min_value=1, max_value=int(ratings["userId"].max()), value=1)
 movie_choice = st.sidebar.selectbox("Choose a Movie", movies["title"].values)
 
 st.write(f"### Recommendations for **User {user_id}** based on **{movie_choice}**")
 
+# ✅ Define all tabs at once
 tab1, tab2, tab3 = st.tabs(["Content-Based", "Collaborative", "Hybrid"])
 
 with tab1:
     st.subheader("Content-Based Recommendations")
-    st.write(recommend_content(movie_choice))
+    recs = recommend_content(movie_choice)
+    st.write(recs if recs else "No recommendations found.")
 
 with tab2:
     st.subheader("Collaborative Filtering Recommendations")
-    st.write(recommend_collaborative(user_id))
+    recs = recommend_collaborative(user_id)
+    st.write(recs if recs else "No recommendations found.")
 
 with tab3:
     st.subheader("Hybrid Recommendations")
-    st.write(recommend_hybrid(user_id, movie_choice))
+    recs = recommend_hybrid(user_id, movie_choice)
+    st.write(recs if recs else "No recommendations found.")
+
