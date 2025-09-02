@@ -7,99 +7,71 @@ Original file is located at
     https://colab.research.google.com/drive/1oKZ9SYJgRz3Ji58vo8Gu3tMtAeUl02hW
 """
 
-!pip install scikit-learn pandas -q
-
+import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.decomposition import NMF
+import os, zipfile, requests
 
-!wget -nc http://files.grouplens.org/datasets/movielens/ml-latest-small.zip
-!unzip -n ml-latest-small.zip
+url = "http://files.grouplens.org/datasets/movielens/ml-latest-small.zip"
+if not os.path.exists("ml-latest-small"):
+    r = requests.get(url)
+    with open("ml.zip", "wb") as f:
+        f.write(r.content)
+    with zipfile.ZipFile("ml.zip", "r") as zip_ref:
+        zip_ref.extractall(".")
 
-ratings = pd.read_csv("ml-latest-small/ratings.csv")
 movies = pd.read_csv("ml-latest-small/movies.csv")
+ratings = pd.read_csv("ml-latest-small/ratings.csv")")
 
-print(ratings.head())
-print(movies.head())
-
-# TF-IDF on genres
-tfidf = TfidfVectorizer(stop_words='english')
-tfidf_matrix = tfidf.fit_transform(movies['genres'])
-
-# Cosine similarity
+# ---- Content-based filtering ----
+tfidf = TfidfVectorizer(stop_words="english")
+tfidf_matrix = tfidf.fit_transform(movies["genres"])
 cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
-
-# Index mapping
-indices = pd.Series(movies.index, index=movies['title']).drop_duplicates()
+indices = pd.Series(movies.index, index=movies["title"]).drop_duplicates()
 
 def recommend_content(title, n=5):
+    if title not in indices:
+        return []
     idx = indices[title]
-    sim_scores = list(enumerate(cosine_sim[idx]))
-    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:n+1]
+    sim_scores = sorted(list(enumerate(cosine_sim[idx])), key=lambda x: x[1], reverse=True)[1:n+1]
     movie_indices = [i[0] for i in sim_scores]
-    return movies['title'].iloc[movie_indices].tolist()
+    return movies["title"].iloc[movie_indices].tolist()
 
-print("Content-based similar to Toy Story (1995):")
-print(recommend_content("Toy Story (1995)"))
-
-# Create user-item matrix
+# ---- Collaborative filtering (NMF) ----
 user_movie_matrix = ratings.pivot(index="userId", columns="movieId", values="rating").fillna(0)
 
-# Apply NMF
 nmf = NMF(n_components=20, init="random", random_state=42, max_iter=300)
 W = nmf.fit_transform(user_movie_matrix)
 H = nmf.components_
-
 pred_ratings = np.dot(W, H)
 pred_df = pd.DataFrame(pred_ratings, index=user_movie_matrix.index, columns=user_movie_matrix.columns)
 
-# Recommendation function
 def recommend_collaborative(user_id, n=5):
+    if user_id not in pred_df.index:
+        return []
     scores = pred_df.loc[user_id]
     top_movies = scores.sort_values(ascending=False).head(n).index
-    return movies[movies['movieId'].isin(top_movies)]['title'].tolist()
+    return movies[movies["movieId"].isin(top_movies)]["title"].tolist()
 
-print("Collaborative recommendations for User 1:")
-print(recommend_collaborative(1))
-
-def hybrid_recommend(user_id, title, n=5, alpha=0.5):
-    # Content-based scores
-    idx = indices[title]
-    sim_scores = list(enumerate(cosine_sim[idx]))
-    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)[1:50]  # take top 50
-    cb_candidates = [i[0] for i in sim_scores]
-
-    # Collaborative scores
-    collab_scores = pred_df.loc[user_id, movies.iloc[cb_candidates]['movieId']].values
-
-    # Combine: weighted average
-    hybrid_scores = alpha * np.array([s[1] for s in sim_scores]) + (1 - alpha) * collab_scores
-    ranked = np.argsort(hybrid_scores)[::-1][:n]
-
-    return movies.iloc[[cb_candidates[i] for i in ranked]]['title'].tolist()
-
-print("Hybrid recommendations for User 1 given Toy Story (1995):")
-print(hybrid_recommend(1, "Toy Story (1995)"))
-
-!pip install streamlit -q
-
-# Streamlit UI
-# ------------------------------
-import streamlit as st
+# ---- Streamlit UI ----
 st.title("🎬 Movie Recommendation System")
 
 st.sidebar.header("User Settings")
-user_id = st.sidebar.number_input("Enter User ID", min_value=1, max_value=ratings['userId'].max(), value=1)
-movie_choice = st.sidebar.selectbox("Choose a Movie", movies['title'].values)
+user_id = st.sidebar.number_input("Enter User ID", min_value=1, max_value=ratings["userId"].max(), value=1)
+movie_choice = st.sidebar.selectbox("Choose a Movie", movies["title"].values)
 
 st.write(f"### Recommendations for **User {user_id}** based on **{movie_choice}**")
 
-tab1, tab2, tab3 = st.tabs(["Content-Based", "Collaborative", "Hybrid"])
+tab1, tab2 = st.tabs(["Content-Based", "Collaborative"])
 
 with tab1:
     st.write(recommend_content(movie_choice))
+
+with tab2:
+    st.write(recommend_collaborative(user_id))
 
 with tab2:
     st.write(recommend_collaborative(user_id))
