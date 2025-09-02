@@ -41,6 +41,22 @@ def recommend_content(title, n=5):
     sim_scores = sorted(list(enumerate(cosine_sim[idx])), key=lambda x: x[1], reverse=True)[1:n+1]
     movie_indices = [i[0] for i in sim_scores]
     return movies["title"].iloc[movie_indices].tolist()
+
+# ---- Collaborative filtering (NMF) ----
+user_movie_matrix = ratings.pivot(index="userId", columns="movieId", values="rating").fillna(0)
+
+nmf = NMF(n_components=20, init="random", random_state=42, max_iter=300)
+W = nmf.fit_transform(user_movie_matrix)
+H = nmf.components_
+pred_ratings = np.dot(W, H)
+pred_df = pd.DataFrame(pred_ratings, index=user_movie_matrix.index, columns=user_movie_matrix.columns)
+
+def recommend_collaborative(user_id, n=5):
+    if user_id not in pred_df.index:
+        return []
+    scores = pred_df.loc[user_id]
+    top_movies = scores.sort_values(ascending=False).head(n).index
+    return movies[movies["movieId"].isin(top_movies)]["title"].tolist()
     
 # ---- Hybrid recommender ----
 def recommend_hybrid(user_id, title, n=5, alpha=0.5):
