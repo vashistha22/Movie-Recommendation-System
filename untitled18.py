@@ -15,6 +15,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.decomposition import NMF
 import os, zipfile, requests
 
+# Auto-download MovieLens dataset
+# ------------------------------
 url = "http://files.grouplens.org/datasets/movielens/ml-latest-small.zip"
 if not os.path.exists("ml-latest-small"):
     r = requests.get(url)
@@ -39,22 +41,22 @@ def recommend_content(title, n=5):
     sim_scores = sorted(list(enumerate(cosine_sim[idx])), key=lambda x: x[1], reverse=True)[1:n+1]
     movie_indices = [i[0] for i in sim_scores]
     return movies["title"].iloc[movie_indices].tolist()
-
-# ---- Collaborative filtering (NMF) ----
-user_movie_matrix = ratings.pivot(index="userId", columns="movieId", values="rating").fillna(0)
-
-nmf = NMF(n_components=20, init="random", random_state=42, max_iter=300)
-W = nmf.fit_transform(user_movie_matrix)
-H = nmf.components_
-pred_ratings = np.dot(W, H)
-pred_df = pd.DataFrame(pred_ratings, index=user_movie_matrix.index, columns=user_movie_matrix.columns)
-
-def recommend_collaborative(user_id, n=5):
-    if user_id not in pred_df.index:
+    
+# ---- Hybrid recommender ----
+def recommend_hybrid(user_id, title, n=5, alpha=0.5):
+    if title not in indices or user_id not in pred_df.index:
         return []
-    scores = pred_df.loc[user_id]
-    top_movies = scores.sort_values(ascending=False).head(n).index
-    return movies[movies["movieId"].isin(top_movies)]["title"].tolist()
+    idx = indices[title]
+    sim_scores = sorted(list(enumerate(cosine_sim[idx])), key=lambda x: x[1], reverse=True)[1:50]
+    cb_candidates = [i[0] for i in sim_scores]
+
+    collab_scores = pred_df.loc[user_id, movies.iloc[cb_candidates]["movieId"]].values
+    cb_scores = np.array([s[1] for s in sim_scores])
+
+    hybrid_scores = alpha * cb_scores + (1 - alpha) * collab_scores
+    ranked = np.argsort(hybrid_scores)[::-1][:n]
+
+    return movies.iloc[[cb_candidates[i] for i in ranked]]["title"].tolist()
 
 # ---- Streamlit UI ----
 st.title("🎬 Movie Recommendation System")
@@ -65,16 +67,16 @@ movie_choice = st.sidebar.selectbox("Choose a Movie", movies["title"].values)
 
 st.write(f"### Recommendations for **User {user_id}** based on **{movie_choice}**")
 
-tab1, tab2 = st.tabs(["Content-Based", "Collaborative"])
+tab1, tab2, tab3 = st.tabs(["Content-Based", "Collaborative", "Hybrid"])
 
 with tab1:
+    st.subheader("Content-Based Recommendations")
     st.write(recommend_content(movie_choice))
 
 with tab2:
-    st.write(recommend_collaborative(user_id))
-
-with tab2:
+    st.subheader("Collaborative Filtering Recommendations")
     st.write(recommend_collaborative(user_id))
 
 with tab3:
-    st.write(hybrid_recommend(user_id, movie_choice))
+    st.subheader("Hybrid Recommendations")
+    st.write(recommend_hybrid(user_id, movie_choice))
