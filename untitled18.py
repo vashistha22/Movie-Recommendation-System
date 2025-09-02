@@ -46,7 +46,7 @@ def recommend_content(title, n=5):
 # ---- Collaborative filtering (NMF) ----
 user_movie_matrix = ratings.pivot(index="userId", columns="movieId", values="rating").fillna(0)
 
-nmf = NMF(n_components=20, init="random", random_state=42, max_iter=300)
+nmf = NMF(n_components=15, init="nndsvda", random_state=42, max_iter=200)
 W = nmf.fit_transform(user_movie_matrix)
 H = nmf.components_
 pred_ratings = np.dot(W, H)
@@ -59,22 +59,6 @@ def recommend_collaborative(user_id, n=5):
     top_movies = scores.sort_values(ascending=False).head(n).index
     return movies[movies["movieId"].isin(top_movies)]["title"].tolist()
 
-# ---- Hybrid recommender ----
-def recommend_hybrid(user_id, title, n=5, alpha=0.5):
-    if title not in indices or user_id not in pred_df.index:
-        return []
-    idx = indices[title]
-    sim_scores = sorted(list(enumerate(cosine_sim[idx])), key=lambda x: x[1], reverse=True)[1:50]
-    cb_candidates = [i[0] for i in sim_scores]
-
-    collab_scores = pred_df.loc[user_id, movies.iloc[cb_candidates]["movieId"]].values
-    cb_scores = np.array([s[1] for s in sim_scores])
-
-    hybrid_scores = alpha * cb_scores + (1 - alpha) * collab_scores
-    ranked = np.argsort(hybrid_scores)[::-1][:n]
-
-    return movies.iloc[[cb_candidates[i] for i in ranked]]["title"].tolist()
-
 # ------------------------------
 # Streamlit UI
 # ------------------------------
@@ -86,8 +70,8 @@ movie_choice = st.sidebar.selectbox("Choose a Movie", movies["title"].values)
 
 st.write(f"### Recommendations for **User {user_id}** based on **{movie_choice}**")
 
-# ✅ Define all tabs at once
-tab1, tab2, tab3 = st.tabs(["Content-Based", "Collaborative", "Hybrid"])
+# ✅ Only 2 tabs now
+tab1, tab2 = st.tabs(["Content-Based", "Collaborative"])
 
 with tab1:
     st.subheader("Content-Based Recommendations")
@@ -98,9 +82,3 @@ with tab2:
     st.subheader("Collaborative Filtering Recommendations")
     recs = recommend_collaborative(user_id)
     st.write(recs if recs else "No recommendations found.")
-
-with tab3:
-    st.subheader("Hybrid Recommendations")
-    recs = recommend_hybrid(user_id, movie_choice)
-    st.write(recs if recs else "No recommendations found.")
-
