@@ -47,7 +47,6 @@ We designed a movie recommendation engine that suggests movies based on:
 ## 📁 Repository Contents  
 - `app.py` → Streamlit web app code  
 - `requirements.txt` → List of dependencies  
-- `data/` → Movie dataset (metadata + ratings)  
 - `README.md` → Project documentation  
 
 ---
@@ -55,14 +54,12 @@ We designed a movie recommendation engine that suggests movies based on:
 ## ▶️ Running the Project Locally  
 
 1. Clone this repository:  
-   git clone https://github.com/vashistha22/Movie-Recommendation-System.git
-   cd movie-recommendation-system
-
-2.Install dependencies:
-  pip install -r requirements.txt
-
-3.Run the Streamlit app:
-  streamlit run app.py
+   git clone https://github.com/vashistha22/Movie-Recommender-System.git
+   cd Movie-Recommender-System
+2. Install dependencies:
+   pip install -r requirements.txt
+3. Run the Streamlit app:
+   streamlit run app.py
 
 ## 👨‍🎓 Author
 Vashistha Pankaj
