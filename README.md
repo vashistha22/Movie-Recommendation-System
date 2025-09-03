@@ -51,15 +51,13 @@ We designed a movie recommendation engine that suggests movies based on:
 
 ---
 
-## ▶️ Running the Project Locally  
+## 🔮 Future Improvements
 
-1. Clone this repository:  
-   git clone https://github.com/vashistha22/Movie-Recommender-System.git
-   cd Movie-Recommender-System
-2. Install dependencies:
-   pip install -r requirements.txt
-3. Run the Streamlit app:
-   streamlit run app.py
+- Add Hybrid Recommendation System (blend content + collaborative)
+
+- Integrate TMDb API to show posters & metadata
+
+- Enable user login and personalized profiles
 
 ## 👨‍🎓 Author
 Vashistha Pankaj
