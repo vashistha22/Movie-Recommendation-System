@@ -16,20 +16,26 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.decomposition import NMF
 
 # ------------------------------
-# Download MovieLens dataset
+# Load dataset (cached)
 # ------------------------------
-url = "http://files.grouplens.org/datasets/movielens/ml-latest-small.zip"
-if not os.path.exists("ml-latest-small"):
-    r = requests.get(url)
-    with open("ml.zip", "wb") as f:
-        f.write(r.content)
-    with zipfile.ZipFile("ml.zip", "r") as zip_ref:
-        zip_ref.extractall(".")
+@st.cache_data
+def load_data():
+    url = "http://files.grouplens.org/datasets/movielens/ml-latest-small.zip"
+    if not os.path.exists("ml-latest-small"):
+        r = requests.get(url)
+        with open("ml.zip", "wb") as f:
+            f.write(r.content)
+        with zipfile.ZipFile("ml.zip", "r") as zip_ref:
+            zip_ref.extractall(".")
+    movies = pd.read_csv("ml-latest-small/movies.csv")
+    ratings = pd.read_csv("ml-latest-small/ratings.csv")
+    return movies, ratings
 
-movies = pd.read_csv("ml-latest-small/movies.csv")
-ratings = pd.read_csv("ml-latest-small/ratings.csv")
+movies, ratings = load_data()
 
-# ---- Content-based filtering ----
+# ------------------------------
+# Content-based filtering
+# ------------------------------
 tfidf = TfidfVectorizer(stop_words="english")
 tfidf_matrix = tfidf.fit_transform(movies["genres"])
 cosine_sim = cosine_similarity(tfidf_matrix, tfidf_matrix)
@@ -39,41 +45,36 @@ def recommend_content(title, n=5):
     if title not in indices:
         return []
     idx = indices[title]
-    sim_scores = sorted(list(enumerate(cosine_sim[idx])), key=lambda x: x[1], reverse=True)[1:n+1]
+    sim_scores = sorted(
+        list(enumerate(cosine_sim[idx])),
+        key=lambda x: x[1],
+        reverse=True
+    )[1:n+1]
     movie_indices = [i[0] for i in sim_scores]
     return movies["title"].iloc[movie_indices].tolist()
 
-# ---- Collaborative filtering (NMF) ----
-user_movie_matrix = ratings.pivot(index="userId", columns="movieId", values="rating").fillna(0)
+# ------------------------------
+# Collaborative filtering (lazy training)
+# ------------------------------
+@st.cache_resource
+def train_nmf(ratings):
+    user_movie_matrix = ratings.pivot(
+        index="userId", columns="movieId", values="rating"
+    ).fillna(0)
 
-nmf = NMF(n_components=20, init="random", random_state=42, max_iter=300)
-W = nmf.fit_transform(user_movie_matrix)
-H = nmf.components_
-pred_ratings = np.dot(W, H)
-pred_df = pd.DataFrame(pred_ratings, index=user_movie_matrix.index, columns=user_movie_matrix.columns)
+    nmf = NMF(n_components=15, init="nndsvda", random_state=42, max_iter=150)
+    W = nmf.fit_transform(user_movie_matrix)
+    H = nmf.components_
+    pred_ratings = np.dot(W, H)
 
-def recommend_collaborative(user_id, n=5):
+    return pd.DataFrame(pred_ratings, index=user_movie_matrix.index, columns=user_movie_matrix.columns)
+
+def recommend_collaborative(user_id, pred_df, n=5):
     if user_id not in pred_df.index:
         return []
     scores = pred_df.loc[user_id]
     top_movies = scores.sort_values(ascending=False).head(n).index
     return movies[movies["movieId"].isin(top_movies)]["title"].tolist()
-
-# ---- Hybrid recommender ----
-def recommend_hybrid(user_id, title, n=5, alpha=0.5):
-    if title not in indices or user_id not in pred_df.index:
-        return []
-    idx = indices[title]
-    sim_scores = sorted(list(enumerate(cosine_sim[idx])), key=lambda x: x[1], reverse=True)[1:50]
-    cb_candidates = [i[0] for i in sim_scores]
-
-    collab_scores = pred_df.loc[user_id, movies.iloc[cb_candidates]["movieId"]].values
-    cb_scores = np.array([s[1] for s in sim_scores])
-
-    hybrid_scores = alpha * cb_scores + (1 - alpha) * collab_scores
-    ranked = np.argsort(hybrid_scores)[::-1][:n]
-
-    return movies.iloc[[cb_candidates[i] for i in ranked]]["title"].tolist()
 
 # ------------------------------
 # Streamlit UI
@@ -81,13 +82,15 @@ def recommend_hybrid(user_id, title, n=5, alpha=0.5):
 st.title("🎬 Movie Recommendation System")
 
 st.sidebar.header("User Settings")
-user_id = st.sidebar.number_input("Enter User ID", min_value=1, max_value=int(ratings["userId"].max()), value=1)
+user_id = st.sidebar.number_input(
+    "Enter User ID", min_value=1, max_value=int(ratings["userId"].max()), value=1
+)
 movie_choice = st.sidebar.selectbox("Choose a Movie", movies["title"].values)
 
 st.write(f"### Recommendations for **User {user_id}** based on **{movie_choice}**")
 
-# ✅ Define all tabs at once
-tab1, tab2, tab3 = st.tabs(["Content-Based", "Collaborative", "Hybrid"])
+# ✅ Two tabs only
+tab1, tab2 = st.tabs(["Content-Based", "Collaborative"])
 
 with tab1:
     st.subheader("Content-Based Recommendations")
@@ -96,10 +99,7 @@ with tab1:
 
 with tab2:
     st.subheader("Collaborative Filtering Recommendations")
-    recs = recommend_collaborative(user_id)
+    pred_df = train_nmf(ratings)   # ⬅️ train only when needed (cached)
+    recs = recommend_collaborative(user_id, pred_df)
     st.write(recs if recs else "No recommendations found.")
 
-with tab3:
-    st.subheader("Hybrid Recommendations")
-    recs = recommend_hybrid(user_id, movie_choice)
-    st.write(recs if recs else "No recommendations found.")
